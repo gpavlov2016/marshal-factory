@@ -7,6 +7,17 @@ export type ExecError = Error & { killed?: boolean; code?: string | number; stdo
 export type ExecOptions = { input?: string; cwd?: string; timeoutMs?: number; maxBuffer?: number; env?: Record<string, string> };
 
 /**
+ * Windows `execFile` cannot spawn `.cmd`/`.bat` directly (EINVAL); run them through `cmd.exe /c`.
+ * Prefer a real `.exe` when available (see {@link resolveT3Path}).
+ */
+export function spawnArgv(command: string, args: string[]): { command: string; args: string[] } {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(command)) {
+    return { command: process.env.ComSpec ?? "cmd.exe", args: ["/d", "/s", "/c", command, ...args] };
+  }
+  return { command, args };
+}
+
+/**
  * Runs a command and returns its output. The outcome comes from the process itself: it settles
  * when the process exits, with its exit code and output, or when it never started. With `input`,
  * a stdin error such as EPIPE does not settle anything on its own (the command may have read the
@@ -24,7 +35,8 @@ export function exec(command: string, args: string[], { input, cwd, timeoutMs, m
       ...(maxBuffer !== undefined && { maxBuffer }),
       ...(env !== undefined && { env: { ...process.env, ...env } }),
     };
-    const child = execFile(command, args, options, (error, stdout, stderr) => {
+    const spawned = spawnArgv(command, args);
+    const child = execFile(spawned.command, spawned.args, options, (error, stdout, stderr) => {
       if (!error) return resolve({ stdout, stderr });
       const failure = Object.assign(error, { stdout, stderr }) as ExecError;
       if (stdinError) failure.stdinError = stdinError;

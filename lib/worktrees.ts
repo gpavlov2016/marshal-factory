@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { z } from "zod";
 import type { JobRow } from "../db/schema";
 import { planCleanup, type BranchState } from "./cleanup";
@@ -7,6 +7,13 @@ import type { RepoName } from "./github/app";
 import { github } from "./github/pulls";
 import { localHost, type JobHost } from "./host";
 import { listThreads, showThread } from "./t3-client";
+
+/** Path under `root/` as a relative key, or null when outside. Tolerates Windows separators from git. */
+function pathUnder(root: string, path: string): string | null {
+  const rel = relative(root, path);
+  if (!rel || rel.startsWith("..") || rel === path) return null;
+  return rel.split(/[/\\]/).join("/");
+}
 
 type ClaimedJob = Pick<JobRow, "key" | "attempt" | "stage" | "stage_at" | "claimed_at">;
 
@@ -85,8 +92,13 @@ async function countLines(host: JobHost, cmd: string, args: string[], cwd: strin
   return out ? out.split("\n").length : 0;
 }
 
+/** Best-effort worktree size for the cleanup report. Soft-fails on hosts without usable `du` (Windows). */
 async function sizeKb(host: JobHost, path: string) {
-  return Number((await sh(host, "du", ["-sk", path])).split(/\s/)[0]) || 0;
+  try {
+    return Number((await sh(host, "du", ["-sk", path])).split(/\s/)[0]) || 0;
+  } catch {
+    return 0;
+  }
 }
 
 export type CleanupReport = {
@@ -214,10 +226,10 @@ export async function cleanupSubagentWorktrees(
   { now = Date.now(), dryRun = false, host = localHost } = {},
 ): Promise<CleanupReport> {
   const report: CleanupReport = { removed: [], held: [], archive: [] };
-  const root = join(repo, ".claude/worktrees") + "/";
+  const root = join(repo, ".claude", "worktrees");
   for (const tree of await allLinkedWorktrees(repo, host)) {
-    if (!tree.path.startsWith(root)) continue;
-    const key = tree.path.slice(root.length);
+    const key = pathUnder(root, tree.path);
+    if (key === null) continue;
     if (!(await host.exists(tree.path))) continue;
     if (now - (await lastTouched(tree.path, host)) < idleHours * 3_600_000) {
       report.held.push({ key, reason: "touched within the idle window; a subagent may still use it" });

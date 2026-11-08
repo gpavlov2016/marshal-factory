@@ -2,6 +2,7 @@ import "./test-guard";
 import assert from "node:assert/strict";
 import { hostname } from "node:os";
 import { join } from "node:path";
+import { spawnArgv } from "../lib/exec";
 import { makePlatform, parseMachineGuid, parseWinDriveLine, resolveBashPath, resolveT3Path } from "../lib/platform";
 import { identify, systemCollectors } from "../runner/heartbeat";
 
@@ -102,5 +103,12 @@ assert.equal(
 );
 if (savedT3 !== undefined) process.env.T3CODE_CLI_PATH = savedT3;
 else delete process.env.T3CODE_CLI_PATH;
+
+if (process.platform === "win32") {
+  const wrapped = spawnArgv("C:\\tools\\t3.cmd", ["thread", "list"]);
+  assert.equal(wrapped.args[0], "/d");
+  assert.equal(wrapped.args[3], "C:\\tools\\t3.cmd");
+  assert.deepEqual(wrapped.args.slice(4), ["thread", "list"]);
+}
 
 console.log("platform regressions passed");

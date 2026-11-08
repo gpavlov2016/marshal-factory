@@ -106,11 +106,9 @@ export function resolveT3Path(platform = process.platform, home = process.env.HO
   const fromEnv = process.env.T3CODE_CLI_PATH;
   if (fromEnv && existsSync(fromEnv)) {
     if (platform === "win32" && /\.cmd$/i.test(fromEnv)) {
-      const unwrapped = t3ExeFromCmdShim(fromEnv);
-      if (unwrapped) return unwrapped;
-    } else {
-      return fromEnv;
+      return t3ExeFromCmdShim(fromEnv) ?? fromEnv;
     }
+    return fromEnv;
   }
   if (platform === "win32") {
     const candidates = [

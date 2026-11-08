@@ -9,8 +9,12 @@ import { attemptBranch, parseBranch } from "../lib/factory";
 
 // A T3 CLI with no threads; the cleanup modules read the path when they load.
 const t3Dir = mkdtempSync(join(tmpdir(), "cleanup-t3-"));
-process.env.T3CODE_CLI_PATH = join(t3Dir, "t3");
-writeFileSync(process.env.T3CODE_CLI_PATH, "#!/bin/sh\necho '[]'\n", { mode: 0o755 });
+process.env.T3CODE_CLI_PATH = join(t3Dir, process.platform === "win32" ? "t3.cmd" : "t3");
+writeFileSync(
+  process.env.T3CODE_CLI_PATH,
+  process.platform === "win32" ? "@echo off\r\necho []\r\n" : "#!/bin/sh\necho '[]'\n",
+  { mode: 0o755 },
+);
 const { cleanupRepo, linkedWorktrees } = await import("../lib/worktrees");
 const { github } = await import("../lib/github/pulls");
 const ops = await import("../runner/ops");
@@ -106,8 +110,14 @@ try {
   assert.ok(launched, "a failed cleanup does not keep the startup pass from launching");
   assert.deepEqual(started, { claimed: 1, cleaned: { error: "GitHub down" }, launched: ["TST-5"] });
 } finally {
-  rmSync(dir, { recursive: true, force: true });
-  rmSync(t3Dir, { recursive: true, force: true });
+  // Windows can leave the temp tree briefly locked after git worktree ops; drop EBUSY.
+  for (const target of [dir, t3Dir]) {
+    try {
+      rmSync(target, { recursive: true, force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EBUSY") throw error;
+    }
+  }
 }
 
 console.log("cleanup regressions passed");
