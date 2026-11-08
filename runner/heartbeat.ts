@@ -8,6 +8,7 @@ import { db } from "../db/client";
 import { machines } from "../db/schema";
 import { loadConfig } from "../lib/config";
 import { UNKNOWN, type Heartbeat, type Inventory } from "../lib/machine";
+import { defaultPlatform, nodeMemory, winDisk, type Platform } from "../lib/platform";
 import { sandboxReadiness } from "../lib/sandbox";
 import { connectStatus, readHarnesses, readProjects, readT3Runtime } from "../lib/t3-state";
 import { baseImageBuild } from "./base-image";
@@ -18,17 +19,14 @@ const RUNNER_DIR = join(import.meta.dirname, "..");
 const text = async (cmd: string, args: string[], cwd?: string) =>
   (await run(cmd, args, { cwd, timeout: 5_000, maxBuffer: 1024 * 1024 })).stdout;
 
-export type Machine = { id: string; name: string; idFrom: "config" | "ioreg" | "hostname" };
+export type Machine = { id: string; name: string; idFrom: "config" | "ioreg" | "machineGuid" | "hostname" };
 
-/** Falls back to the host name when ioreg fails, so the runner starts instead of crash-looping under launchd. */
-export async function identify(override?: string): Promise<Machine> {
-  const name = (await text("scutil", ["--get", "ComputerName"]).then((out) => out.trim(), () => "")) || hostname();
+/** Falls back to the host name when the OS hardware probe fails, so the runner starts instead of crash-looping. */
+export async function identify(override?: string, platform: Platform = defaultPlatform): Promise<Machine> {
+  const name = await platform.computerName();
   if (override) return { id: override, name, idFrom: "config" };
-  const uuid = await text("ioreg", ["-rd1", "-c", "IOPlatformExpertDevice"]).then(
-    (out) => /"IOPlatformUUID" = "([^"]+)"/.exec(out)?.[1],
-    () => undefined,
-  );
-  return uuid ? { id: uuid, name, idFrom: "ioreg" } : { id: `hostname:${hostname()}`, name, idFrom: "hostname" };
+  const hardware = await platform.hardwareId();
+  return hardware ? { id: hardware.id, name, idFrom: hardware.idFrom } : { id: `hostname:${hostname()}`, name, idFrom: "hostname" };
 }
 
 let machine: Promise<Machine> | undefined;
@@ -64,11 +62,21 @@ export type InventoryCollectors = { [K in keyof Inventory]-?: () => Promise<Inve
 
 const settle = <T>(collect: () => Promise<T>) => collect().catch((): typeof UNKNOWN => UNKNOWN);
 
-export function systemCollectors(capacity: () => Promise<Heartbeat["capacity"]>): HeartbeatCollectors {
+export function systemCollectors(
+  capacity: () => Promise<Heartbeat["capacity"]>,
+  platform: Platform = defaultPlatform,
+): HeartbeatCollectors {
   return {
     cpu: async () => ({ load1: loadavg()[0]!, cores: cpus().length }),
-    memory: async () => parseVmStat(await text("vm_stat", []), totalmem()),
-    disk: async () => parseDf(await text("df", ["-k", "/System/Volumes/Data"])),
+    memory: async () => {
+      if (platform.kind === "darwin") return parseVmStat(await text("vm_stat", []), totalmem());
+      return nodeMemory(totalmem());
+    },
+    disk: async () => {
+      if (platform.kind === "darwin") return parseDf(await text("df", ["-k", "/System/Volumes/Data"]));
+      if (platform.kind === "win32") return winDisk(text);
+      return parseDf(await text("df", ["-k", "/"]));
+    },
     capacity,
   };
 }

@@ -95,17 +95,17 @@ assert.equal(parseHeartbeat(null), null, "no heartbeat at all");
 
 const configured = await identify("lane-1");
 assert.deepEqual([configured.id, configured.idFrom], ["lane-1", "config"], "the config id wins");
-const path = process.env.PATH;
-process.env.PATH = "/nonexistent";
-try {
-  assert.deepEqual(
-    await identify(),
-    { id: `hostname:${hostname()}`, name: hostname(), idFrom: "hostname" },
-    "without ioreg the runner falls back to the host name instead of crashing",
-  );
-} finally {
-  process.env.PATH = path;
-}
+const { makePlatform } = await import("../lib/platform");
+assert.deepEqual(
+  await identify(undefined, makePlatform({
+    platform: process.platform,
+    run: async () => {
+      throw new Error("probe failed");
+    },
+  })),
+  { id: `hostname:${hostname()}`, name: process.platform === "win32" ? process.env.COMPUTERNAME?.trim() || hostname() : hostname(), idFrom: "hostname" },
+  "when the OS hardware probe fails the runner falls back to the host name instead of crashing",
+);
 
 const at = new Date("2026-10-24T12:00:00Z");
 assert.equal(isOnline(new Date(at.getTime() - 269_000), at.getTime()), true, "269 s ago is online");

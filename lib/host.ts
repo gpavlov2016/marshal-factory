@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { exec, type ExecOptions } from "./exec";
+import { defaultPlatform } from "./platform";
 import { forbidInTest } from "./test-mode";
 
 /**
@@ -21,16 +22,22 @@ export type JobHost = {
   remove(path: string): Promise<void>;
 };
 
-// The LaunchAgent sets T3CODE_CLI_PATH; otherwise t3 must be on PATH.
-const localT3 = () => process.env.T3CODE_CLI_PATH ?? "t3";
+/** The LaunchAgent / Scheduled Task may set T3CODE_CLI_PATH; otherwise prefer the install layout, then PATH. */
+const localT3 = () => process.env.T3CODE_CLI_PATH ?? defaultPlatform.t3Path() ?? (process.platform === "win32" ? "t3.exe" : "t3");
 const GUARDED_T3 = new Set(["start", "show", "send"]);
+
+/** Host bash for recipe checks; Git Bash on Windows when present. */
+export const hostBash = () => defaultPlatform.bashPath() ?? "bash";
 
 export const localHost: JobHost = {
   get t3() {
     return localT3();
   },
   async run(command, args, options) {
-    if (command === localT3() && args[0] === "thread" && GUARDED_T3.has(args[1]!)) forbidInTest(`t3 thread ${args[1]}`);
+    const t3 = localT3();
+    if ((command === t3 || command === "t3" || command === "t3.exe") && args[0] === "thread" && GUARDED_T3.has(args[1]!)) {
+      forbidInTest(`t3 thread ${args[1]}`);
+    }
     return exec(command, args, options);
   },
   async readFile(path) {

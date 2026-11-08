@@ -7,12 +7,13 @@ import { Database } from "bun:sqlite";
 import { z } from "zod";
 import { harnessLabel, type Harness } from "./harness";
 import { UNKNOWN, type ConnectState, type Projects, type T3Project } from "./machine";
+import { resolveT3Path } from "./platform";
 import { forbidInTest } from "./test-mode";
 
 // Runner only: bun:sqlite does not exist under Next.
 
 const run = promisify(execFile);
-const T3 = () => process.env.T3CODE_CLI_PATH ?? "t3";
+const T3 = () => process.env.T3CODE_CLI_PATH ?? resolveT3Path() ?? (process.platform === "win32" ? "t3.exe" : "t3");
 const CLI_TIMEOUT_MS = 5_000;
 
 export const t3Home = () => process.env.T3CODE_HOME ?? join(homedir(), ".t3");

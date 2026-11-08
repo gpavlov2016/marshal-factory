@@ -10,6 +10,7 @@ import type { Job, JobSource, SourceAdapter } from "../lib/sources/types";
 import { readT3Runtime } from "../lib/t3-state";
 import { desiredRepositoryGroup, readRegistry, type Registry } from "../lib/repositories";
 import { desiredLabelGroups, ticketOverrides, type SourceOverrides, type TicketRecord } from "../lib/ticket-overrides";
+import { defaultPlatform } from "../lib/platform";
 import { config } from "./config";
 import { thisMachine } from "./heartbeat";
 import { needsCodexSlot, sandboxHarness, sandboxRuntime, usableSlots } from "./sandbox";
@@ -23,6 +24,11 @@ export type Capabilities = {
   local: boolean;
   /** This machine has a checkout of the job's repo; a local launch needs one. */
   checkout: boolean;
+  /**
+   * Host tooling allows local factory threads (bash for checks, etc.). False on Windows until
+   * Git Bash is installed; Modal launches ignore this.
+   */
+  hostLocal: boolean;
   /** Why Modal cannot launch here; null when it can, even if every slot is busy right now. */
   modal: string | null;
   claude: boolean;
@@ -64,8 +70,20 @@ export function planLaunch(
 
   const inSandbox = sandboxHarness(harness, can.driverOf(harness.provider), can.claude, can.codexModel);
   const modal = can.modal ?? (needsCodexSlot(inSandbox.choice.provider) && !can.codexSlot ? "no Codex login slot is usable" : null);
-  const noLocal = !can.local ? "this runner's T3 is not running" : !can.checkout ? "this runner has no checkout of the repo" : null;
+  const noLocal = !can.local
+    ? "this runner's T3 is not running"
+    : !can.checkout
+      ? "this runner has no checkout of the repo"
+      : !can.hostLocal
+        ? "this runner cannot run local jobs yet (host shell/tooling missing)"
+        : null;
   let execution = asked.execution ?? settings.execution;
+  // On Windows without host bash (or when hostLocal is false), prefer Modal even if Settings say local.
+  if (!asked.execution && execution === "local" && !can.hostLocal) {
+    if (modal) return { kind: "wait", reason: `this runner cannot run local jobs yet and cloud sandboxes cannot launch here (${modal})` };
+    execution = "modal";
+    notes.push("This runner cannot run local jobs yet, so it runs in a cloud sandbox.");
+  }
   if (asked.execution === "modal" && modal) {
     if (noLocal) return { kind: "wait", reason: `Cloud sandboxes cannot launch on this runner (${modal}) and ${noLocal}` };
     execution = "local";
@@ -126,6 +144,7 @@ export function capabilities(): Omit<Capabilities, "checkout"> {
     imageProblem(sandboxRuntime.image(), limits) ?? (!sandboxRuntime.modalToken() ? "there is no cloud sandbox token" : null);
   return {
     local: overrideRuntime.localT3(),
+    hostLocal: defaultPlatform.localJobsSupported(),
     modal,
     claude: Boolean(sandboxRuntime.claudeToken()),
     codexSlot: usableSlots(limits).length > 0,

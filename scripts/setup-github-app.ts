@@ -24,8 +24,8 @@ const base = `http://localhost:${args.port}`;
 let state: string | undefined = randomBytes(16).toString("hex");
 
 const manifest = {
-  name: "marshal-factory-ski043",
-  url: "https://github.com/ski043/marshal-factory",
+  name: "marshal-factory-gpavlov2016",
+  url: "https://github.com/gpavlov2016",
   hook_attributes: { url: `${ingestBase}/webhooks/github`, active: true },
   redirect_url: `${base}/callback`,
   setup_url: `${base}/installed`,
@@ -128,4 +128,8 @@ await serve(Number(args.port), async (request) => {
 });
 
 console.log(`open ${base}/ to create the GitHub App`);
-if (!args["no-open"]) execFile("open", [`${base}/`]);
+if (!args["no-open"]) {
+  const opener = process.platform === "win32" ? "cmd" : process.platform === "darwin" ? "open" : "xdg-open";
+  const openerArgs = process.platform === "win32" ? ["/c", "start", "", `${base}/`] : [`${base}/`];
+  execFile(opener, openerArgs);
+}

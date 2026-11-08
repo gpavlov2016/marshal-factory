@@ -87,7 +87,7 @@ assert.deepEqual(desiredLabelGroups([...harnesses, harness("codex2", "codex", "c
 
 // planLaunch: overrides field by field over Settings, the model, and each fallback.
 const settings = { harness: { provider: "claudeAgent", model: "claude-sonnet-5-5", from: "settings" as const }, execution: "local" as const };
-const can = { local: true, checkout: true, modal: null as string | null, claude: true, codexSlot: true, driverOf: (p: string) => harnesses.find((h) => h.id === p)?.driver ?? p, codexModel: "gpt-6-astra" };
+const can = { local: true, checkout: true, hostLocal: true, modal: null as string | null, claude: true, codexSlot: true, driverOf: (p: string) => harnesses.find((h) => h.id === p)?.driver ?? p, codexModel: "gpt-6-astra" };
 const plan = (labels: ReturnType<typeof L>[], over: Partial<typeof can> = {}, s: typeof settings | (Omit<typeof settings, "execution"> & { execution: "modal" }) = settings) =>
   planLaunch(asked(labels), s, harnesses, { ...can, ...over });
 

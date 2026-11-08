@@ -27,18 +27,19 @@ Accounts:
 - **Vercel**, for the panel.
 - Optional: **Modal**, to run jobs in cloud sandboxes ([Running jobs in Modal sandboxes](#running-jobs-in-modal-sandboxes)), and **Slack**, for notifications and acting from Slack ([Connecting Slack](#connecting-slack)).
 
-On the Mac that runs the factory:
+On the machine that runs the factory (macOS or Windows):
 
-- macOS. The runner installs as a launchd agent and identifies the Mac by its hardware UUID.
+- **macOS:** the runner installs as a launchd agent and identifies the Mac by its hardware UUID.
+- **Windows:** the runner installs as a Scheduled Task (`MarshalFactoryRunner`), identifies the PC by MachineGuid, and defaults new jobs to **Modal** until Git Bash is available for local host checks. Local T3 jobs need [Git for Windows](https://git-scm.com/download/win) (Git Bash) plus T3 Code running.
 - [Bun](https://bun.sh), git, and the [GitHub CLI](https://cli.github.com) signed in (`gh auth login`). Threads push branches and open PRs with your own git and `gh` credentials.
-- Claude Code with the PStack plugin installed.
-- T3 Code, running, with its `t3` command line tool. The installer looks for it at `~/.t3/bin/t3`, then on your `PATH`, or you can set `T3CODE_CLI_PATH`.
-- The `neon` CLI, signed in, and the `vercel` CLI.
-- `jq` and `openssl`, used by a few commands below.
+- Claude Code with the PStack plugin installed (for local Claude jobs; Modal Claude jobs use `CLAUDE_CODE_OAUTH_TOKEN`).
+- T3 Code, running, with its `t3` command line tool (required for **local** jobs; Modal jobs use T3 inside the sandbox image). The installer looks under `~/.t3/bin` / `~/.local/bin`, then on your `PATH`, or you can set `T3CODE_CLI_PATH`.
+- The `neon` CLI, signed in, and the `vercel` CLI (panel deploy).
+- On macOS/Linux setup scripts: `jq` and `openssl`.
 
 ## Install
 
-These steps set up one factory: one Neon project, one panel, and one Mac running the runner. Do them in order. Several steps depend on values an earlier step creates.
+These steps set up one factory: one Neon project, one panel, and one runner machine (Mac or Windows). Do them in order. Several steps depend on values an earlier step creates.
 
 ### 1. Clone the factory
 
@@ -177,10 +178,12 @@ Then create your owner account. Sign-up is off by default. The [owner account st
 
 ```sh
 bun scripts/install-runner.ts
-tail -f ~/Library/Logs/marshal-factory/runner.log
 ```
 
-This installs the LaunchAgent `com.marshal-factory.runner`. It starts at login and restarts if it exits. Within a minute the log shows `realtime` `live` and a `heartbeat`, and your Mac appears under **Machines** in the panel. The runner still needs a repo to work in, which the next section adds.
+- **macOS:** installs LaunchAgent `com.marshal-factory.runner` (KeepAlive). Log: `~/Library/Logs/marshal-factory/runner.log` (`tail -f` that path).
+- **Windows:** installs Scheduled Task `MarshalFactoryRunner` at logon. Log: `%LOCALAPPDATA%\marshal-factory\runner.log`.
+
+Within a minute the log shows `realtime` `live` and a `heartbeat`, and the machine appears under **Machines** in the panel. The runner still needs a repo to work in, which the next section adds. On Windows, set **Run jobs on** to Modal (and complete [Running jobs in Modal sandboxes](#running-jobs-in-modal-sandboxes)) unless you have Git Bash + T3 for local jobs.
 
 ## Add your repo
 
@@ -264,7 +267,7 @@ If you change the team key or label, also change them in the ingest Function (`F
 
 ## Running jobs in Modal sandboxes
 
-Instead of this Mac's T3, the runner can start each job in its own Modal sandbox, so jobs don't share a machine and more of them run at once. On the runner Mac:
+Instead of the runner machine's T3, the runner can start each job in its own Modal sandbox, so jobs don't share a machine and more of them run at once. **On Windows this is the recommended default.** On the runner machine:
 
 ```sh
 uv tool install modal && modal token new

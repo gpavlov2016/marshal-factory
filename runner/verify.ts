@@ -3,7 +3,7 @@ import type { ExecError } from "../lib/exec";
 import { eventSchema, type FactoryEvent } from "../lib/events";
 import { combined, planChecks, runChecks, type CheckRunner } from "../lib/evidence";
 import { attemptBranch } from "../lib/factory";
-import { ensureAwake, HostAsleepError, HostGoneError, WakeDeferredError, type HostedJob, type JobHost } from "../lib/host";
+import { ensureAwake, HostAsleepError, HostGoneError, hostBash, localHost, WakeDeferredError, type HostedJob, type JobHost } from "../lib/host";
 import type { MergeDecision, RepoPolicy, RunnerVerification } from "../lib/merge-decision";
 import { parseRecipe, RECIPE_PATH, type Recipe } from "../lib/recipe";
 import { REPO_DIR } from "../lib/sandbox";
@@ -56,12 +56,13 @@ export function runnerVerification(job: VerifyJob, sha: string, policy: RepoPoli
 
 const git = (host: JobHost, dir: string, args: string[], timeoutMs = 60_000) => host.run("git", ["-C", dir, ...args], { timeoutMs });
 
-/** Runs a check with bash in `dir` on the host; only an unreachable host throws. */
+/** Runs a check with bash in `dir` on the host; only an unreachable host throws. On Windows uses Git Bash when resolved. */
 const hostRunner =
   (host: JobHost, dir: string): CheckRunner =>
   async (command, timeoutMs) => {
     try {
-      const { stdout, stderr } = await host.run("bash", ["-c", combined(command)], { cwd: dir, timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+      const bash = host === localHost ? hostBash() : "bash";
+      const { stdout, stderr } = await host.run(bash, ["-c", combined(command)], { cwd: dir, timeoutMs, maxBuffer: 64 * 1024 * 1024 });
       return { exitCode: 0, output: `${stdout}${stderr}` };
     } catch (error) {
       if (error instanceof HostGoneError || error instanceof HostAsleepError) throw error;
