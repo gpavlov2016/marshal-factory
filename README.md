@@ -324,3 +324,4 @@ Work in a separate clone or worktree, never in the live checkout. Run `bun dev` 
 - [docs/research/](docs/research/): background reports from the initial investigation.
 
 <!-- Modal sandbox path was verified. -->
+<!-- Windows runner port was verified. -->
