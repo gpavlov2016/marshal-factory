@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { promisify } from "node:util";
 import { ModalClient } from "modal";
 import { z } from "zod";
@@ -215,7 +215,10 @@ export async function buildSandboxImage({
     const end = () => void opened.terminate().catch(() => {});
     signal?.addEventListener("abort", end, { once: true });
     if (signal?.aborted) end();
-    for (const entry of IMAGE_BUNDLES) await sandbox.filesystem.writeText(readFileSync(join(bundleDir, entry), "utf8"), join(FACTORY_ROOT, entry));
+    // Remote paths are Linux; path.join on Windows would turn FACTORY_ROOT into a non-absolute Modal path.
+    for (const entry of IMAGE_BUNDLES) {
+      await sandbox.filesystem.writeText(readFileSync(join(bundleDir, entry), "utf8"), posix.join(FACTORY_ROOT, entry));
+    }
     const playbooks = await installPlaybooks(sandbox.filesystem);
     log(`playbooks ${PLAYBOOK_FILES.join(", ")} in ${SANDBOX_PLAYBOOKS} at ${playbooks}`);
     const pinned = pinnedVersions(limits);
